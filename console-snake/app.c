@@ -136,8 +136,8 @@ void draw() {
 
 // Move the snake and handle collisions
 void move_snake() {
-    Position new_pos = head->pos; // (Copy current head position)
-    switch (dir) {                // (Update based on direction)
+    Position new_pos = head->pos;
+    switch (dir) {
         case UP: new_pos.y--; break;
         case DOWN: new_pos.y++; break;
         case LEFT: new_pos.x--; break;
@@ -148,30 +148,38 @@ void move_snake() {
     if (new_pos.x <= 0 || new_pos.x >= WIDTH - 1 || 
         new_pos.y <= 0 || new_pos.y >= HEIGHT - 1 || 
         is_on_snake(new_pos)) {
-        game_over = 1; // (End game)
+        game_over = 1;
         return;
     }
 
     // Add new head
-    SnakeSegment *new_head = malloc(sizeof(SnakeSegment)); // (New memory)
+    SnakeSegment *new_head = malloc(sizeof(SnakeSegment));
     if (new_head == NULL) {
         fprintf(stderr, "Error: Memory allocation failed\n");
         game_over = 1;
         return;
     }
-    new_head->pos = new_pos;      // (Set new position)
-    new_head->prev = head;        // (Link to old head)
-    head = new_head;              // (Update head)
+    new_head->pos = new_pos;
+    new_head->prev = head;
+    head = new_head;
 
     // Check if food is eaten
     if (new_pos.x == food.x && new_pos.y == food.y) {
-        score++;         // (Increase score)
-        generate_food(); // (New food)
+        score++;
+        generate_food();
     } else {
-        // Move tail (remove old tail if not growing)
-        SnakeSegment *old_tail = tail;
-        tail = tail->prev; // (Tail moves up)
-        free(old_tail);    // (Free old tail)
+        // Remove tail correctly
+        if (head->prev != NULL) { // Ensure there’s at least one segment before tail
+            SnakeSegment *current = head;
+            while (current->prev != tail) {
+                current = current->prev;
+            }
+            // current->prev is tail; make current the new tail
+            SnakeSegment *old_tail = tail;
+            tail = current;
+            tail->prev = NULL;
+            free(old_tail);
+        }
     }
 }
 
