@@ -5,7 +5,7 @@
 #include <windows.h>  // (Windows API: Sleep for delays)
 
 // Constants for game grid size
-#define WIDTH 20  // (Width of the game area)
+#define WIDTH 60  // (Width of the game area)
 #define HEIGHT 20 // (Height of the game area)
 
 // Struct for x, y coordinates (groups related data into a single unit)
@@ -60,24 +60,31 @@ int main() {
     score = 0;         // (Score starts at 0)
     game_over = 0;     // (Game is running)
     generate_food();   // (Place first food)
-
-    // Game loop
+    
     while (!game_over) {
-        draw();          // (Show game state)
-        Sleep(100);      // (Pause 100ms; Windows equivalent of usleep)
+        DWORD startTime = GetTickCount(); // Get start time of frame
 
-        // Check for keypress and update direction
-        if (kbhit()) {   // (Check if a key is pressed, non-blocking)
-            char key = getch(); // (Get key without waiting)
+        draw(); // Draw game state
+
+        // Handle input
+        if (kbhit()) {
+            char key = getch();
             switch (key) {
-                case 'w': case 'W': if (dir != DOWN) dir = UP; break;    // (W moves up)
-                case 's': case 'S': if (dir != UP) dir = DOWN; break;    // (S moves down)
-                case 'a': case 'A': if (dir != RIGHT) dir = LEFT; break; // (A moves left)
-                case 'd': case 'D': if (dir != LEFT) dir = RIGHT; break; // (D moves right)
+                case 'w': case 'W': if (dir != DOWN) dir = UP; break;
+                case 's': case 'S': if (dir != UP) dir = DOWN; break;
+                case 'a': case 'A': if (dir != RIGHT) dir = LEFT; break;
+                case 'd': case 'D': if (dir != LEFT) dir = RIGHT; break;
             }
         }
 
-        move_snake(); // (Update snake position)
+        move_snake(); // Update snake
+
+        // Cap frame rate to ~30 FPS (33ms per frame)
+        DWORD frameTime = GetTickCount() - startTime;
+        DWORD targetFrameTime = 100; // 1000ms / 10 FPS ≈ 100ms
+        if (frameTime < targetFrameTime) {
+            Sleep(targetFrameTime - frameTime);
+        }
     }
 
     // Game over message
@@ -112,26 +119,43 @@ void generate_food() {
 
 // Draw the game grid
 void draw() {
-    printf("\033[2J"); // (Clear screen)
-    printf("\033[H");  // (Move cursor to top-left)
+    // Create a buffer for the screen
+    CHAR_INFO buffer[HEIGHT][WIDTH];
+    COORD bufferSize = {WIDTH, HEIGHT};
+    COORD bufferCoord = {0, 0};
+    SMALL_RECT writeRegion = {0, 0, WIDTH - 1, HEIGHT - 1};
+
+    // Get handle to console
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    // Fill the buffer
     for (int y = 0; y < HEIGHT; y++) {
         for (int x = 0; x < WIDTH; x++) {
             Position pos = {x, y};
+            char c;
             if (x == 0 || x == WIDTH - 1 || y == 0 || y == HEIGHT - 1) {
-                printf("#"); // (Boundary)
+                c = '#'; // Boundary
             } else if (pos.x == head->pos.x && pos.y == head->pos.y) {
-                printf("@"); // (Snake head)
+                c = '@'; // Snake head
             } else if (is_on_snake(pos)) {
-                printf("o"); // (Snake body)
+                c = 'o'; // Snake body
             } else if (pos.x == food.x && pos.y == food.y) {
-                printf("*"); // (Food)
+                c = '*'; // Food
             } else {
-                printf(" "); // (Empty space)
+                c = ' '; // Empty space
             }
+            buffer[y][x].Char.AsciiChar = c;
+            buffer[y][x].Attributes = FOREGROUND_GREEN; // Optional: Set text color
         }
-        printf("\n"); // (New line after row)
     }
-    printf("Score: %d\n", score); // (Show score)
+
+    // Write buffer to console
+    WriteConsoleOutput(hConsole, (CHAR_INFO *)buffer, bufferSize, bufferCoord, &writeRegion);
+
+    // Display score (optional: move to a fixed position)
+    COORD scorePos = {0, HEIGHT};
+    SetConsoleCursorPosition(hConsole, scorePos);
+    printf("Score: %d", score);
 }
 
 // Move the snake and handle collisions
