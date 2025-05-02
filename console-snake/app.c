@@ -4,214 +4,203 @@
 #include <conio.h>    
 #include <windows.h>  
 
-
-#define WIDTH 60  
-#define HEIGHT 20 
-
+#define GAME_BOARD_WIDTH 60  
+#define GAME_BOARD_HEIGHT 20 
 
 typedef struct {
-    int x;
-    int y;
+    int x_coordinate;
+    int y_coordinate;
 } Position;
 
-
 typedef struct SnakeSegment {
-    Position pos;             
-    struct SnakeSegment *prev; 
+    Position position;             
+    struct SnakeSegment *previous_segment; 
 } SnakeSegment;
 
-
 typedef enum {
-    UP,
-    DOWN,
-    LEFT,
-    RIGHT
+    DIRECTION_UP,
+    DIRECTION_DOWN,
+    DIRECTION_LEFT,
+    DIRECTION_RIGHT
 } Direction;
 
+SnakeSegment *snake_head; 
+SnakeSegment *snake_tail; 
+Position food_position;      
+Direction current_direction;      
+int player_score;          
+int is_game_over;      
 
-SnakeSegment *head; 
-SnakeSegment *tail; 
-Position food;      
-Direction dir;      
-int score;          
-int game_over;      
-
-
-int is_on_snake(Position pos); 
-void generate_food();           
-void draw();                   
-void move_snake();             
-void free_snake();             
+int is_position_on_snake(Position position); 
+void spawn_new_food();           
+void render_game_board();                   
+void update_snake_position();             
+void deallocate_snake();             
 
 int main() {
     
     srand(time(NULL));
 
     
-    head = malloc(sizeof(SnakeSegment)); 
-    if (head == NULL) {
+    snake_head = malloc(sizeof(SnakeSegment)); 
+    if (snake_head == NULL) {
         fprintf(stderr, "Error: Memory allocation failed\n");
         return EXIT_FAILURE;
     }
-    head->pos = (Position){WIDTH / 2, HEIGHT / 2}; 
-    head->prev = NULL; 
-    tail = head;       
-    dir = RIGHT;       
-    score = 0;         
-    game_over = 0;     
-    generate_food();   
+    snake_head->position = (Position){GAME_BOARD_WIDTH / 2, GAME_BOARD_HEIGHT / 2}; 
+    snake_head->previous_segment = NULL; 
+    snake_tail = snake_head;       
+    current_direction = DIRECTION_RIGHT;       
+    player_score = 0;         
+    is_game_over = 0;     
+    spawn_new_food();   
     
-    while (!game_over) {
-        DWORD startTime = GetTickCount(); 
+    while (!is_game_over) {
+        DWORD frame_start_time = GetTickCount(); 
 
-        draw(); 
+        render_game_board(); 
 
         
         if (kbhit()) {
-            char key = getch();
-            switch (key) {
-                case 'w': case 'W': if (dir != DOWN) dir = UP; break;
-                case 's': case 'S': if (dir != UP) dir = DOWN; break;
-                case 'a': case 'A': if (dir != RIGHT) dir = LEFT; break;
-                case 'd': case 'D': if (dir != LEFT) dir = RIGHT; break;
+            char input_key = getch();
+            switch (input_key) {
+                case 'w': case 'W': if (current_direction != DIRECTION_DOWN) current_direction = DIRECTION_UP; break;
+                case 's': case 'S': if (current_direction != DIRECTION_UP) current_direction = DIRECTION_DOWN; break;
+                case 'a': case 'A': if (current_direction != DIRECTION_RIGHT) current_direction = DIRECTION_LEFT; break;
+                case 'd': case 'D': if (current_direction != DIRECTION_LEFT) current_direction = DIRECTION_RIGHT; break;
             }
         }
 
-        move_snake(); 
+        update_snake_position(); 
 
         
-        DWORD frameTime = GetTickCount() - startTime;
-        DWORD targetFrameTime = 100; 
-        if (frameTime < targetFrameTime) {
-            Sleep(targetFrameTime - frameTime);
+        DWORD frame_duration = GetTickCount() - frame_start_time;
+        DWORD target_frame_duration = 100; 
+        if (frame_duration < target_frame_duration) {
+            Sleep(target_frame_duration - frame_duration);
         }
     }
 
     
     printf("\033[2J"); 
     printf("\033[H");  
-    printf("Game Over! Final Score: %d\n", score);
+    printf("Game Over! Final Score: %d\n", player_score);
 
     
-    free_snake(); 
+    deallocate_snake(); 
     return EXIT_SUCCESS; 
 }
 
-
-int is_on_snake(Position pos) {
-    SnakeSegment *current = head; 
-    while (current != NULL) {     
-        if (current->pos.x == pos.x && current->pos.y == pos.y) {
+int is_position_on_snake(Position position) {
+    SnakeSegment *current_segment = snake_head; 
+    while (current_segment != NULL) {     
+        if (current_segment->position.x_coordinate == position.x_coordinate && current_segment->position.y_coordinate == position.y_coordinate) {
             return 1;             
         }
-        current = current->prev;  
+        current_segment = current_segment->previous_segment;  
     }
     return 0;                     
 }
 
-
-void generate_food() {
+void spawn_new_food() {
     do {
-        food.x = rand() % (WIDTH - 2) + 1;  
-        food.y = rand() % (HEIGHT - 2) + 1; 
-    } while (is_on_snake(food));            
+        food_position.x_coordinate = rand() % (GAME_BOARD_WIDTH - 2) + 1;  
+        food_position.y_coordinate = rand() % (GAME_BOARD_HEIGHT - 2) + 1; 
+    } while (is_position_on_snake(food_position));            
 }
 
-
-void draw() {
+void render_game_board() {
     
-    CHAR_INFO buffer[HEIGHT][WIDTH];
-    COORD bufferSize = {WIDTH, HEIGHT};
-    COORD bufferCoord = {0, 0};
-    SMALL_RECT writeRegion = {0, 0, WIDTH - 1, HEIGHT - 1};
-
-    
-    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    CHAR_INFO display_buffer[GAME_BOARD_HEIGHT][GAME_BOARD_WIDTH];
+    COORD buffer_dimensions = {GAME_BOARD_WIDTH, GAME_BOARD_HEIGHT};
+    COORD buffer_coordinates = {0, 0};
+    SMALL_RECT display_region = {0, 0, GAME_BOARD_WIDTH - 1, GAME_BOARD_HEIGHT - 1};
 
     
-    for (int y = 0; y < HEIGHT; y++) {
-        for (int x = 0; x < WIDTH; x++) {
-            Position pos = {x, y};
-            char c;
-            if (x == 0 || x == WIDTH - 1 || y == 0 || y == HEIGHT - 1) {
-                c = '#'; 
-            } else if (pos.x == head->pos.x && pos.y == head->pos.y) {
-                c = '@'; 
-            } else if (is_on_snake(pos)) {
-                c = 'o'; 
-            } else if (pos.x == food.x && pos.y == food.y) {
-                c = '*'; 
+    HANDLE console_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    
+    for (int y = 0; y < GAME_BOARD_HEIGHT; y++) {
+        for (int x = 0; x < GAME_BOARD_WIDTH; x++) {
+            Position current_position = {x, y};
+            char display_character;
+            if (x == 0 || x == GAME_BOARD_WIDTH - 1 || y == 0 || y == GAME_BOARD_HEIGHT - 1) {
+                display_character = '#'; 
+            } else if (current_position.x_coordinate == snake_head->position.x_coordinate && current_position.y_coordinate == snake_head->position.y_coordinate) {
+                display_character = '@'; 
+            } else if (is_position_on_snake(current_position)) {
+                display_character = 'o'; 
+            } else if (current_position.x_coordinate == food_position.x_coordinate && current_position.y_coordinate == food_position.y_coordinate) {
+                display_character = '*'; 
             } else {
-                c = ' '; 
+                display_character = ' '; 
             }
-            buffer[y][x].Char.AsciiChar = c;
-            buffer[y][x].Attributes = FOREGROUND_GREEN; 
+            display_buffer[y][x].Char.AsciiChar = display_character;
+            display_buffer[y][x].Attributes = FOREGROUND_GREEN; 
         }
     }
 
     
-    WriteConsoleOutput(hConsole, (CHAR_INFO *)buffer, bufferSize, bufferCoord, &writeRegion);
+    WriteConsoleOutput(console_handle, (CHAR_INFO *)display_buffer, buffer_dimensions, buffer_coordinates, &display_region);
 
     
-    COORD scorePos = {0, HEIGHT};
-    SetConsoleCursorPosition(hConsole, scorePos);
-    printf("Score: %d", score);
+    COORD score_display_position = {0, GAME_BOARD_HEIGHT};
+    SetConsoleCursorPosition(console_handle, score_display_position);
+    printf("Score: %d", player_score);
 }
 
-
-void move_snake() {
-    Position new_pos = head->pos;
-    switch (dir) {
-        case UP: new_pos.y--; break;
-        case DOWN: new_pos.y++; break;
-        case LEFT: new_pos.x--; break;
-        case RIGHT: new_pos.x++; break;
+void update_snake_position() {
+    Position new_head_position = snake_head->position;
+    switch (current_direction) {
+        case DIRECTION_UP: new_head_position.y_coordinate--; break;
+        case DIRECTION_DOWN: new_head_position.y_coordinate++; break;
+        case DIRECTION_LEFT: new_head_position.x_coordinate--; break;
+        case DIRECTION_RIGHT: new_head_position.x_coordinate++; break;
     }
 
     
-    if (new_pos.x <= 0 || new_pos.x >= WIDTH - 1 || 
-        new_pos.y <= 0 || new_pos.y >= HEIGHT - 1 || 
-        is_on_snake(new_pos)) {
-        game_over = 1;
+    if (new_head_position.x_coordinate <= 0 || new_head_position.x_coordinate >= GAME_BOARD_WIDTH - 1 || 
+        new_head_position.y_coordinate <= 0 || new_head_position.y_coordinate >= GAME_BOARD_HEIGHT - 1 || 
+        is_position_on_snake(new_head_position)) {
+        is_game_over = 1;
         return;
     }
 
     
-    SnakeSegment *new_head = malloc(sizeof(SnakeSegment));
-    if (new_head == NULL) {
+    SnakeSegment *new_head_segment = malloc(sizeof(SnakeSegment));
+    if (new_head_segment == NULL) {
         fprintf(stderr, "Error: Memory allocation failed\n");
-        game_over = 1;
+        is_game_over = 1;
         return;
     }
-    new_head->pos = new_pos;
-    new_head->prev = head;
-    head = new_head;
+    new_head_segment->position = new_head_position;
+    new_head_segment->previous_segment = snake_head;
+    snake_head = new_head_segment;
 
     
-    if (new_pos.x == food.x && new_pos.y == food.y) {
-        score++;
-        generate_food();
+    if (new_head_position.x_coordinate == food_position.x_coordinate && new_head_position.y_coordinate == food_position.y_coordinate) {
+        player_score++;
+        spawn_new_food();
     } else {
         
-        if (head->prev != NULL) { 
-            SnakeSegment *current = head;
-            while (current->prev != tail) {
-                current = current->prev;
+        if (snake_head->previous_segment != NULL) { 
+            SnakeSegment *current_segment = snake_head;
+            while (current_segment->previous_segment != snake_tail) {
+                current_segment = current_segment->previous_segment;
             }
             
-            SnakeSegment *old_tail = tail;
-            tail = current;
-            tail->prev = NULL;
-            free(old_tail);
+            SnakeSegment *old_tail_segment = snake_tail;
+            snake_tail = current_segment;
+            snake_tail->previous_segment = NULL;
+            free(old_tail_segment);
         }
     }
 }
 
-
-void free_snake() {
-    while (head != NULL) {     
-        SnakeSegment *temp = head;
-        head = head->prev;     
-        free(temp);            
+void deallocate_snake() {
+    while (snake_head != NULL) {     
+        SnakeSegment *temp_segment = snake_head;
+        snake_head = snake_head->previous_segment;     
+        free(temp_segment);            
     }
 }
